@@ -1,6 +1,7 @@
 #include "chat.h"
 #include "chat_server.h"
 
+#include <stdio.h>
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +33,8 @@ struct chat_server {
     int ms_count;
 
 	/* PUT HERE OTHER MEMBERS */
+
+    struct chat_message *fill_msg;
 };
 
 
@@ -88,6 +91,8 @@ chat_server_new(void)
     server->msgs = NULL;
     server->ms_count = 0;
 
+    server->fill_msg = NULL;
+
 	return server;
 }
 
@@ -110,6 +115,7 @@ chat_server_delete(struct chat_server *server)
             free(server->msgs[i].data);
     }
     if (server->msgs != NULL) free(server->msgs);
+    if (server->fill_msg != NULL) chat_message_delete(server->fill_msg);
 	free(server);
 }
 
@@ -174,7 +180,7 @@ chat_server_pop_next(struct chat_server *server)
 int interact_server(struct chat_server *server, int fd) {
     int res;
     struct chat_peer *peer = NULL;
-    for (int i=0;i<server->pr_count;i++) {
+    for (int i=0;i<server->pr_count && peer == NULL; i++) {
         if (fd == server->peers[i].socket) {
             peer = &server->peers[i];
         }
@@ -281,17 +287,64 @@ chat_server_get_events(const struct chat_server *server)
 int
 chat_server_feed(struct chat_server *server, const char *msg, uint32_t msg_size)
 {
-    if (server->socket == -1) return CHAT_ERR_NOT_STARTED;
 #ifdef NEED_SERVER_FEED
+    if (server->socket == -1) return CHAT_ERR_NOT_STARTED;
+
+
+    if (server->fill_msg == NULL) {
+        server->fill_msg = malloc(sizeof(struct chat_message));
 #ifdef NEED_AUTHOR
-    struct chat_message msg_ = {"server", NULL, 0};
-#else
-    struct chat_message msg_ = {NULL, 0};
+        server->fill_msg->author = NULL;
 #endif
-    chat_make_msg(&msg_, msg, (int) msg_size);
-    for (int i=0;i<server->pr_count;i++)
-        msg_send(&msg_, server->peers[i].socket);
-    return 0;
+        server->fill_msg->data = malloc(msg_size + 1);
+        memcpy(server->fill_msg->data, msg, msg_size);
+        server->fill_msg->data[msg_size] = 0;
+        server->fill_msg->size = msg_size;
+    } else {
+        char *new_data = malloc(server->fill_msg->size + msg_size + 1);
+        memcpy(new_data, server->fill_msg->data, server->fill_msg->size);
+        memcpy(new_data + server->fill_msg->size, msg, msg_size);
+        free(server->fill_msg->data);
+        server->fill_msg->data = new_data;
+        server->fill_msg->size += msg_size;
+    }
+
+    struct chat_message *fill_msg = server->fill_msg;
+    while (1) {
+        int next_line = -1;
+        for (int i = 0; i < fill_msg->size; i++)
+            if (fill_msg->data[i] == '\n') {
+                next_line = i;
+                break;
+            }
+        if (next_line == -1) return 0;
+        int start = 0, finish = next_line;
+        for (; start < next_line; start++)
+            if (fill_msg->data[start] != ' ' && fill_msg->data[start] != '\t' && fill_msg->data[start] != '\n') break;
+        for (; start < finish; finish--)
+            if (fill_msg->data[finish] != ' ' && fill_msg->data[finish] != '\t' && fill_msg->data[finish] != '\n')
+                break;
+
+        if (start != next_line) {
+            struct chat_message *msg_ = malloc(sizeof(struct chat_message));
+            msg_->data = malloc(finish - start + 2);
+            memcpy(msg_->data, fill_msg->data + start, finish - start + 1);
+            msg_->size = finish - start + 1;
+            msg_->data[finish - start + 1] = 0;
+#ifdef NEED_AUTHOR
+            msg_->author = "server\0";
 #endif
-	return CHAT_ERR_NOT_IMPLEMENTED;
+            for (int i=0;i<server->pr_count;i++)
+                msg_send(msg_, server->peers[i].socket);
+            chat_message_delete(msg_);
+        }
+
+        char *new_data = malloc(fill_msg->size - next_line);
+        memcpy(new_data, fill_msg->data + next_line + 1, fill_msg->size - next_line);
+        free(fill_msg->data);
+        fill_msg->data = new_data;
+        fill_msg->size -= next_line + 1;
+    }
+#endif
+    return CHAT_ERR_NOT_IMPLEMENTED;
 }

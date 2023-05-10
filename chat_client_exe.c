@@ -79,7 +79,7 @@ main(int argc, char **argv)
 			 * hence it is zero.
 			 */
 			poll_client->revents = 0;;
-            while ((rc = chat_client_update(cli, 0)) == 0);
+            while ((rc = chat_client_update(cli, 0)) == 0) {}
 			if (rc != 0 && rc != CHAT_ERR_TIMEOUT) {
 				printf("Update error: %d\n", rc);
 				break;

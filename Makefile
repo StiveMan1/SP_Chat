@@ -1,4 +1,4 @@
-GCC_FLAGS = -Wextra -Wpedantic -Werror -Wall -Wno-gnu-folding-constant 
+GCC_FLAGS = -Wextra -Werror -Wall -Wno-gnu-folding-constant
 
 all: lib exe test
 
@@ -13,7 +13,7 @@ exe: lib chat_client_exe.c chat_server_exe.c
 
 test: lib
 	gcc $(GCC_FLAGS) test.c chat.o chat_client.o chat_server.o -o test 	\
-		-I ../utils
+		-I ../utils -lpthread
 
 clean:
 	rm *.o

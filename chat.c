@@ -62,7 +62,7 @@ int msg_send(struct chat_message *msg, int socket) {
         if (res <= 0) return res;
 
         if (msg->author != NULL) {
-            int size = 0;
+            size_t size = 0;
             while (size != strlen(msg->author)) {
                 res = (int) send(socket, msg->author + size, strlen(msg->author) - size, 0);
                 if (res <= 0) return res;
